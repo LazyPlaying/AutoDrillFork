@@ -1,5 +1,14 @@
 # Auto Drill
 
+## Fork Notice
+
+This repository is a public fork of [Pointifix/AutoDrill](https://github.com/Pointifix/AutoDrill).
+It keeps the original GNU GPL v3.0 license and provides the complete modified source code.
+This fork is not affiliated with or endorsed by the original author unless stated otherwise.
+
+Notable fork changes include safer placement logic, more stable settings keys, and defensive fixes
+for invalid build plans and UI/null-state edge cases.
+
 [![GitHub all releases](https://img.shields.io/github/downloads/Pointifix/AutoDrill/total)](https://github.com/Pointifix/AutoDrill/releases)
 ![GitHub Repo stars](https://img.shields.io/github/stars/Pointifix/AutoDrill?style=social)
 

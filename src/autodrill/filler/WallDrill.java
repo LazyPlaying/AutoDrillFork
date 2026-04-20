@@ -13,10 +13,6 @@ import mindustry.world.Block;
 import mindustry.world.Tile;
 import mindustry.world.blocks.production.BeamDrill;
 
-import java.util.Comparator;
-
-import static arc.Core.bundle;
-
 public class WallDrill {
     public static void fill(Tile tile, BeamDrill drill, Direction direction) {
         Seq<Tile> tiles = getConnectedWallTiles(tile, direction);
@@ -107,6 +103,14 @@ public class WallDrill {
         connectingTiles.sort((Floatf<Tile>) outerMostDuctTile::dst);
         Seq<Tile> visitedTiles = new Seq<>();
         visitedTiles.add(outerMostDuctTile);
+        connectingTiles.remove(outerMostDuctTile);
+
+        Util.addBuildPlan(new BuildPlan(outerMostDuctTile.x, outerMostDuctTile.y, directionOpposite.r, Blocks.duct));
+        Tile outletTile = outerMostDuctTile.nearby(directionOpposite.p);
+        if (outletTile != null) {
+            Util.addBuildPlan(new BuildPlan(outletTile.x, outletTile.y, directionOpposite.r, Blocks.duct));
+        }
+
         while (!connectingTiles.isEmpty()) {
             Tile tile1 = null, tile2 = null;
 
@@ -120,17 +124,10 @@ public class WallDrill {
                     break;
                 }
             }
-            if (tile1 == null || tile2 == null) continue;
+            if (tile1 == null || tile2 == null) break;
 
-            if (tile2.equals(outerMostDuctTile)) {
-                BuildPlan buildPlan = new BuildPlan(tile2.x, tile2.y, directionOpposite.r, Blocks.duct);
-                Vars.player.unit().addBuild(buildPlan);
-                buildPlan = new BuildPlan(tile2.x + directionOpposite.p.x, tile2.y + directionOpposite.p.y, directionOpposite.r, Blocks.duct);
-                Vars.player.unit().addBuild(buildPlan);
-            } else {
-                BuildPlan buildPlan = new BuildPlan(tile2.x, tile2.y, tile2.relativeTo(tile1), Blocks.duct);
-                Vars.player.unit().addBuild(buildPlan);
-            }
+            BuildPlan buildPlan = new BuildPlan(tile2.x, tile2.y, tile2.relativeTo(tile1), Blocks.duct);
+            Util.addBuildPlan(buildPlan);
         }
 
         for (Tile ductTile : connectingTiles) {
@@ -140,7 +137,7 @@ public class WallDrill {
             if (neighbor == null) continue;
 
             BuildPlan buildPlan = new BuildPlan(ductTile.x, ductTile.y, ductTile.relativeTo(neighbor), Blocks.duct);
-            Vars.player.unit().addBuild(buildPlan);
+            Util.addBuildPlan(buildPlan);
         }
 
         Tile outerMost = boreTiles.max(t -> -direction.primaryAxis(new Point2(t.x, t.y)));
@@ -151,19 +148,19 @@ public class WallDrill {
             if (beamNodeTile == null) continue;
 
             BuildPlan buildPlan = new BuildPlan(beamNodeTile.x, beamNodeTile.y, 0, Blocks.beamNode);
-            Vars.player.unit().addBuild(buildPlan);
+            Util.addBuildPlan(buildPlan);
             while (beamNodeTile.dst(boreTile) > 10 * Vars.tilesize) {
                 beamNodeTile = beamNodeTile.nearby(direction.p.x * 5, direction.p.y * 5);
                 if (beamNodeTile == null) break;
 
                 buildPlan = new BuildPlan(beamNodeTile.x, beamNodeTile.y, 0, Blocks.beamNode);
-                Vars.player.unit().addBuild(buildPlan);
+                Util.addBuildPlan(buildPlan);
             }
         }
 
         for (Tile boreTile : boreTiles) {
             BuildPlan buildPlan = new BuildPlan(boreTile.x, boreTile.y, direction.r, drill);
-            Vars.player.unit().addBuild(buildPlan);
+            Util.addBuildPlan(buildPlan);
         }
     }
 
@@ -176,7 +173,7 @@ public class WallDrill {
 
         Item sourceItem = tile.wallDrop();
 
-        int maxTiles = (int) (Core.settings.getInt(bundle.get("auto-drill.settings.max-tiles")) * 0.25f);
+        int maxTiles = Core.settings.getInt(Util.plasmaBoreMaxTilesSetting, 100);
 
         while (!queue.isEmpty() && tiles.size < maxTiles) {
             Tile currentTile = queue.removeFirst();

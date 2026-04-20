@@ -16,6 +16,7 @@ import arc.util.Scaling;
 import autodrill.filler.BridgeDrill;
 import autodrill.filler.Direction;
 import autodrill.filler.OptimizationDrill;
+import autodrill.filler.Util;
 import autodrill.filler.WallDrill;
 import mindustry.Vars;
 import mindustry.content.Blocks;
@@ -92,11 +93,11 @@ public class AutoDrill extends Mod {
             SettingsMenuDialog.SettingsTable settings = new SettingsMenuDialog.SettingsTable();
 
             settings.pref(new DescriptionSetting(bundle.get("auto-drill.settings.activation-desc")));
-            settings.textPref(bundle.get("auto-drill.settings.activation-key"), KeyCode.h.name().toUpperCase(), s -> {
+            settings.textPref(Util.activationKeySetting, KeyCode.h.name().toUpperCase(), s -> {
                 KeyCode keyCode = Arrays.stream(KeyCode.values()).filter(k -> k.value.equalsIgnoreCase(s)).findFirst().orElse(null);
-                Core.settings.put(bundle.get("auto-drill.settings.activation-key"), keyCode == null ? KeyCode.h.name().toUpperCase() : keyCode.name().toUpperCase());
+                Core.settings.put(Util.activationKeySetting, keyCode == null ? KeyCode.h.name().toUpperCase() : keyCode.name().toUpperCase());
             });
-            settings.checkPref(bundle.get("auto-drill.settings.display-toggle-button"), true);
+            settings.checkPref(Util.displayToggleButtonSetting, true);
             settings.pref(new DividerSetting());
 
             settings.pref(new DescriptionSetting(bundle.get("auto-drill.settings.drills-desc")));
@@ -117,10 +118,13 @@ public class AutoDrill extends Mod {
             settings.sliderPref("airblast-drill-max-tiles", 100, 25, 500, 25, value -> value + "").title = bundle.get("auto-drill.settings.max-tiles");
             settings.sliderPref("airblast-drill-min-ores", 9, 1, 16, 1, value -> value + "").title = bundle.get("auto-drill.settings.min-ores");
 
+            settings.pref(new DescriptionSetting(bundle.get("auto-drill.settings.plasma-bore")));
+            settings.sliderPref(Util.plasmaBoreMaxTilesSetting, 100, 25, 500, 25, value -> value + "").title = bundle.get("auto-drill.settings.max-tiles");
+
             settings.pref(new DividerSetting());
             settings.pref(new DescriptionSetting(bundle.get("auto-drill.settings.optimization-quality-desc")));
-            settings.sliderPref(bundle.get("auto-drill.settings.optimization-quality"), 2, 1, 10, 1, i -> i + "");
-            settings.checkPref(bundle.get("auto-drill.settings.place-water-extractor-and-power-nodes"), true);
+            settings.sliderPref(Util.optimizationQualitySetting, 2, 1, 10, 1, i -> i + "").title = bundle.get("auto-drill.settings.optimization-quality");
+            settings.checkPref(Util.placeWaterExtractorsAndPowerNodesSetting, true);
 
             settingsTable.add(settings);
         };
@@ -137,11 +141,8 @@ public class AutoDrill extends Mod {
                         !ui.consolefrag.shown() &&
                         !ui.content.isShown() &&
                         !Core.scene.hasKeyboard()) {
-                    if (Core.settings.getString(bundle.get("auto-drill.settings.activation-key")).equalsIgnoreCase(keyCode.value)) {
-                        enabled = !enabled;
-                        selectTable.visible = false;
-                        directionTable.visible = false;
-                        enableButton.setChecked(enabled);
+                    if (Core.settings.getString(Util.activationKeySetting, KeyCode.h.name().toUpperCase()).equalsIgnoreCase(keyCode.value)) {
+                        setEnabled(!enabled);
                     }
                 }
 
@@ -151,7 +152,7 @@ public class AutoDrill extends Mod {
 
         // Handling
         Events.on(EventType.TapEvent.class, event -> {
-            if (enabled) {
+            if (enabled && event.tile != null) {
                 selectTable.visible = true;
                 selectedTile = event.tile;
 
@@ -167,12 +168,10 @@ public class AutoDrill extends Mod {
 
         ui.hudGroup.fill(t -> {
             enableButton = t.button(new TextureRegionDrawable(Core.atlas.find("auto-drill-logo")), Styles.emptyTogglei, () -> {
-                enabled = !enabled;
-                selectTable.visible = false;
-                directionTable.visible = false;
+                setEnabled(!enabled);
             }).get();
             enableButton.resizeImage(buttonSize);
-            enableButton.visible(() -> Core.settings.getBool(bundle.get("auto-drill.settings.display-toggle-button")));
+            enableButton.visible(() -> Core.settings.getBool(Util.displayToggleButtonSetting, true));
 
             t.margin(5f);
             t.marginRight(140f + 15f);
@@ -182,7 +181,7 @@ public class AutoDrill extends Mod {
 
     private void buildSelectTable() {
         selectTable.update(() -> {
-            if (Vars.state.isMenu()) {
+            if (Vars.state.isMenu() || selectedTile == null) {
                 selectTable.visible = false;
                 return;
             }
@@ -191,7 +190,7 @@ public class AutoDrill extends Mod {
         });
 
         mechanicalDrillButton = selectTable.button(new TextureRegionDrawable(Core.atlas.find("block-mechanical-drill-full")), Styles.defaulti, () -> {
-            enabled = false;
+            deactivateTool();
             selectTable.visible = false;
             directionTable.visible = true;
             directionAction = direction -> BridgeDrill.fill(selectedTile, (Drill) Blocks.mechanicalDrill, direction);
@@ -199,7 +198,7 @@ public class AutoDrill extends Mod {
         mechanicalDrillButton.resizeImage(buttonSize);
 
         pneumaticDrillButton = selectTable.button(new TextureRegionDrawable(Core.atlas.find("block-pneumatic-drill-full")), Styles.defaulti, () -> {
-            enabled = false;
+            deactivateTool();
             selectTable.visible = false;
             directionTable.visible = true;
             directionAction = direction -> BridgeDrill.fill(selectedTile, (Drill) Blocks.pneumaticDrill, direction);
@@ -207,21 +206,21 @@ public class AutoDrill extends Mod {
         pneumaticDrillButton.resizeImage(buttonSize);
 
         laserDrillButton = selectTable.button(new TextureRegionDrawable(Core.atlas.find("block-laser-drill-full")), Styles.defaulti, () -> {
-            enabled = false;
+            deactivateTool();
             selectTable.visible = false;
             OptimizationDrill.fill(selectedTile, (Drill) Blocks.laserDrill);
         }).get();
         laserDrillButton.resizeImage(buttonSize);
 
         blastDrillButton = selectTable.button(new TextureRegionDrawable(Core.atlas.find("block-blast-drill-full")), Styles.defaulti, () -> {
-            enabled = false;
+            deactivateTool();
             selectTable.visible = false;
             OptimizationDrill.fill(selectedTile, (Drill) Blocks.blastDrill);
         }).get();
         blastDrillButton.resizeImage(buttonSize);
 
         plasmaBoreButton = selectTable.button(new TextureRegionDrawable(Core.atlas.find("block-plasma-bore-full")), Styles.defaulti, () -> {
-            enabled = false;
+            deactivateTool();
             selectTable.visible = false;
             directionTable.visible = true;
             directionAction = direction -> WallDrill.fill(selectedTile, (BeamDrill) Blocks.plasmaBore, direction);
@@ -236,14 +235,14 @@ public class AutoDrill extends Mod {
         largePlasmaBoreButton.resizeImage(buttonSize);*/
 
         impactDrillButton = selectTable.button(new TextureRegionDrawable(Core.atlas.find("block-impact-drill-full")), Styles.defaulti, () -> {
-            enabled = false;
+            deactivateTool();
             selectTable.visible = false;
             OptimizationDrill.fill(selectedTile, (Drill) Blocks.impactDrill, false);
         }).get();
         impactDrillButton.resizeImage(buttonSize);
 
         eruptionDrillButton = selectTable.button(new TextureRegionDrawable(Core.atlas.find("block-eruption-drill-full")), Styles.defaulti, () -> {
-            enabled = false;
+            deactivateTool();
             selectTable.visible = false;
             OptimizationDrill.fill(selectedTile, (Drill) Blocks.eruptionDrill, false);
         }).get();
@@ -258,12 +257,15 @@ public class AutoDrill extends Mod {
             }
         });
 
+        selectTable.visible = false;
         selectTable.pack();
         selectTable.act(0);
         Core.scene.root.addChildAt(0, selectTable);
     }
 
     private void updateSelectTable() {
+        if (selectedTile == null) return;
+
         selectTable.removeChild(mechanicalDrillButton);
         if (Blocks.mechanicalDrill.environmentBuildable() && ((Drill) Blocks.mechanicalDrill).canMine(selectedTile)) {
             selectTable.add(mechanicalDrillButton);
@@ -303,11 +305,14 @@ public class AutoDrill extends Mod {
         if (Blocks.eruptionDrill.environmentBuildable() && ((Drill) Blocks.eruptionDrill).canMine(selectedTile)) {
             selectTable.add(eruptionDrillButton);
         }
+
+        selectTable.visible = selectTable.getChildren().size > 0;
+        selectTable.pack();
     }
 
     private void buildDirectionTable() {
         directionTable.update(() -> {
-            if (Vars.state.isMenu()) {
+            if (Vars.state.isMenu() || selectedTile == null) {
                 directionTable.visible = false;
                 return;
             }
@@ -316,8 +321,7 @@ public class AutoDrill extends Mod {
         });
 
         directionTable.table().get().button(Icon.up, Styles.defaulti, () -> {
-            directionAction.get(Direction.UP);
-            directionTable.visible = false;
+            runDirectionAction(Direction.UP);
         }).get().resizeImage(buttonSize);
 
         directionTable.row();
@@ -325,22 +329,20 @@ public class AutoDrill extends Mod {
         Table row2 = directionTable.table().get();
 
         row2.button(Icon.left, Styles.defaulti, () -> {
-            directionAction.get(Direction.LEFT);
-            directionTable.visible = false;
+            runDirectionAction(Direction.LEFT);
         }).get().resizeImage(buttonSize);
         row2.button(Icon.cancel, Styles.defaulti, () -> {
             directionTable.visible = false;
+            directionAction = null;
         }).get().resizeImage(buttonSize);
         row2.button(Icon.right, Styles.defaulti, () -> {
-            directionAction.get(Direction.RIGHT);
-            directionTable.visible = false;
+            runDirectionAction(Direction.RIGHT);
         }).get().resizeImage(buttonSize);
 
         directionTable.row();
 
         directionTable.table().get().button(Icon.down, Styles.defaulti, () -> {
-            directionAction.get(Direction.DOWN);
-            directionTable.visible = false;
+            runDirectionAction(Direction.DOWN);
         }).get().resizeImage(buttonSize);
 
         Core.input.addProcessor(new InputProcessor() {
@@ -352,9 +354,36 @@ public class AutoDrill extends Mod {
             }
         });
 
+        directionTable.visible = false;
         directionTable.pack();
         directionTable.act(0);
         Core.scene.root.addChildAt(0, directionTable);
+    }
+
+    private void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+        selectTable.visible = false;
+        directionTable.visible = false;
+        syncEnableButton();
+    }
+
+    private void deactivateTool() {
+        enabled = false;
+        syncEnableButton();
+    }
+
+    private void syncEnableButton() {
+        if (enableButton != null && enableButton.isChecked() != enabled) {
+            enableButton.setChecked(enabled);
+        }
+    }
+
+    private void runDirectionAction(Direction direction) {
+        if (directionAction != null && selectedTile != null) {
+            directionAction.get(direction);
+        }
+        directionAction = null;
+        directionTable.visible = false;
     }
 
     private static class DescriptionSetting extends SettingsMenuDialog.SettingsTable.Setting {
