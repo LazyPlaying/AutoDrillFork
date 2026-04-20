@@ -20,6 +20,7 @@ import java.util.HashMap;
 
 public class OptimizationDrill {
     private static final int pathPadding = 12;
+    private static final int bridgeRange = 4;
 
     public static void fill(Tile tile, Drill drill) {
         fill(tile, drill, true);
@@ -75,11 +76,7 @@ public class OptimizationDrill {
         if (outputDirection != null) {
             outputNetwork = buildOutputNetwork(selection, drill, sourceItem, outputDirection, reservedRects);
             if (outputNetwork != null) {
-                selection.retainAll(outputNetwork.routedDrills::contains);
-                reservedRects = getDrillRects(selection, drill);
                 reservedRects.add(outputNetwork.conveyorRects);
-            } else {
-                selection.clear();
             }
         }
 
@@ -190,20 +187,22 @@ public class OptimizationDrill {
             }
 
             for (Direction direction : Direction.values()) {
-                Tile next = current.nearby(direction.p);
-                if (next == null || visited.containsKey(next.pos()) || !insidePathBounds(next, bounds)) continue;
+                for (int distance = 1; distance <= bridgeRange; distance++) {
+                    Tile next = current.nearby(direction.p.x * distance, direction.p.y * distance);
+                    if (next == null || visited.containsKey(next.pos()) || !insidePathBounds(next, bounds)) continue;
 
-                boolean target = network.contains(next);
-                if (!target && !canPlaceConveyor(next, conveyor, blockedRects, sourceItem, allowForeignOre)) continue;
+                    boolean target = network.contains(next);
+                    if (!target && !canPlaceConveyor(next, outputBlock(distance), blockedRects, sourceItem, allowForeignOre)) continue;
 
-                parent.put(next.pos(), current.pos());
-                visited.put(next.pos(), next);
+                    parent.put(next.pos(), current.pos());
+                    visited.put(next.pos(), next);
 
-                if (target) {
-                    return reconstructPath(next.pos(), parent, visited);
+                    if (target) {
+                        return reconstructPath(next.pos(), parent, visited);
+                    }
+
+                    queue.addLast(next);
                 }
-
-                queue.addLast(next);
             }
         }
 
@@ -277,6 +276,10 @@ public class OptimizationDrill {
 
     private static Block outputConveyor() {
         return Blocks.titaniumConveyor.environmentBuildable() ? Blocks.titaniumConveyor : Blocks.conveyor;
+    }
+
+    private static Block outputBlock(int distance) {
+        return distance > 1 && Blocks.itemBridge.environmentBuildable() ? Blocks.itemBridge : outputConveyor();
     }
 
     private static boolean coversForeignResource(Tile tile, Drill drill, Item sourceItem) {
@@ -384,6 +387,7 @@ public class OptimizationDrill {
         final Seq<Rect> conveyorRects = new Seq<>();
         final Seq<Tile> routedDrills = new Seq<>();
         final ObjectMap<Tile, Tile> nextByTile = new ObjectMap<>();
+        final ObjectMap<Tile, Block> blockByTile = new ObjectMap<>();
         Tile outlet;
 
         OutputNetwork(Block conveyor, Direction outputDirection) {
@@ -399,11 +403,27 @@ public class OptimizationDrill {
         void addConveyor(Tile tile, Tile next) {
             if (!conveyorTiles.contains(tile)) {
                 conveyorTiles.add(tile);
-                conveyorRects.add(Util.getBlockRect(tile, conveyor));
             }
 
             if (next != null) {
                 nextByTile.put(tile, next);
+            }
+
+            Block block = next == null ? Blocks.itemBridge : outputBlock(Math.abs(next.x - tile.x) + Math.abs(next.y - tile.y));
+            if (blockByTile.get(tile) == null || block == Blocks.itemBridge) {
+                blockByTile.put(tile, block);
+            }
+
+            if (next != null && block == Blocks.itemBridge) {
+                if (!conveyorTiles.contains(next)) {
+                    conveyorTiles.add(next);
+                }
+                blockByTile.put(next, Blocks.itemBridge);
+            }
+
+            Rect rect = Util.getBlockRect(tile, blockByTile.get(tile));
+            if (conveyorRects.find(r -> r.overlaps(rect)) == null) {
+                conveyorRects.add(rect);
             }
         }
 
@@ -414,8 +434,17 @@ public class OptimizationDrill {
         void placePlans() {
             for (Tile conveyorTile : conveyorTiles) {
                 Tile next = nextByTile.get(conveyorTile);
+                Block block = blockByTile.get(conveyorTile, conveyor);
                 int rotation = next == null ? outputDirection.r : conveyorTile.relativeTo(next);
-                Util.addBuildPlan(new BuildPlan(conveyorTile.x, conveyorTile.y, rotation, conveyor));
+                Object config = null;
+
+                if (block == Blocks.itemBridge) {
+                    int distance = next == null ? 0 : Math.abs(next.x - conveyorTile.x) + Math.abs(next.y - conveyorTile.y);
+                    config = distance > 1 ? Util.tileToPoint2(next).sub(Util.tileToPoint2(conveyorTile)) : null;
+                    rotation = 0;
+                }
+
+                Util.addBuildPlan(new BuildPlan(conveyorTile.x, conveyorTile.y, rotation, block, config));
             }
         }
     }
