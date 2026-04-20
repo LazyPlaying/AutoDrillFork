@@ -12,8 +12,6 @@ import mindustry.world.blocks.production.Drill;
 import java.util.InputMismatchException;
 
 public class BridgeDrill {
-    private static final int bridgeRange = 4;
-
     public static void fill(Tile tile, Drill drill, Direction direction) {
         if (drill.size != 2) throw new InputMismatchException("Drill must have a size of 2");
 
@@ -68,7 +66,7 @@ public class BridgeDrill {
         }
 
         for (Tile bridgeTile : bridgeTiles) {
-            Tile neighbor = bridgeTiles.select(t -> isBridgeLink(bridgeTile, t) && t.dst2(outlet) < bridgeTile.dst2(outlet)).min(t -> t.dst2(outlet));
+            Tile neighbor = bridgeTiles.find(t -> Math.abs(t.x - bridgeTile.x) + Math.abs(t.y - bridgeTile.y) == 3);
 
             Point2 config = new Point2();
             if (bridgeTile != outlet && neighbor != null) {
@@ -90,14 +88,6 @@ public class BridgeDrill {
         }
 
         return null;
-    }
-
-    private static boolean isBridgeLink(Tile from, Tile to) {
-        int dx = Math.abs(to.x - from.x);
-        int dy = Math.abs(to.y - from.y);
-        int distance = dx + dy;
-
-        return from != to && (dx == 0 || dy == 0) && distance > 0 && distance <= bridgeRange;
     }
 
     private static boolean isDrillTile(Tile tile) {
