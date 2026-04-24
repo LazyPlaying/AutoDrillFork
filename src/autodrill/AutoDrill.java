@@ -209,14 +209,16 @@ public class AutoDrill extends Mod {
         laserDrillButton = selectTable.button(new TextureRegionDrawable(Core.atlas.find("block-laser-drill-full")), Styles.defaulti, () -> {
             enabled = false;
             selectTable.visible = false;
-            OptimizationDrill.fill(selectedTile, (Drill) Blocks.laserDrill);
+            directionTable.visible = true;
+            directionAction = direction -> OptimizationDrill.fill(selectedTile, (Drill) Blocks.laserDrill, direction);
         }).get();
         laserDrillButton.resizeImage(buttonSize);
 
         blastDrillButton = selectTable.button(new TextureRegionDrawable(Core.atlas.find("block-blast-drill-full")), Styles.defaulti, () -> {
             enabled = false;
             selectTable.visible = false;
-            OptimizationDrill.fill(selectedTile, (Drill) Blocks.blastDrill);
+            directionTable.visible = true;
+            directionAction = direction -> OptimizationDrill.fill(selectedTile, (Drill) Blocks.blastDrill, direction);
         }).get();
         blastDrillButton.resizeImage(buttonSize);
 

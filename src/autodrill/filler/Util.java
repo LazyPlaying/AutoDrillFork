@@ -1,14 +1,13 @@
 package autodrill.filler;
 
-import arc.Core;
 import arc.math.geom.Point2;
 import arc.math.geom.Rect;
+import arc.struct.IntSet;
 import arc.struct.ObjectIntMap;
 import arc.struct.Queue;
 import arc.struct.Seq;
 import mindustry.Vars;
 import mindustry.content.Blocks;
-import mindustry.gen.Call;
 import mindustry.type.Item;
 import mindustry.world.Block;
 import mindustry.world.Build;
@@ -16,7 +15,6 @@ import mindustry.world.Edges;
 import mindustry.world.Tile;
 import mindustry.world.blocks.production.Drill;
 
-import static arc.Core.bundle;
 import static mindustry.Vars.world;
 
 public class Util {
@@ -86,8 +84,8 @@ public class Util {
         Seq<Tile> expandedTiles = new Seq<>();
 
         for (Tile tile : tiles) {
-            for (int dx = -radius; dx < radius; dx++) {
-                for (int dy = -radius; dy < radius; dy++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dy = -radius; dy <= radius; dy++) {
                     if (dx == 0 && dy == 0) continue;
 
                     Tile nearby = tile.nearby(dx, dy);
@@ -106,7 +104,7 @@ public class Util {
     protected static Seq<Tile> getConnectedTiles(Tile tile, int maxTiles) {
         Queue<Tile> queue = new Queue<>();
         Seq<Tile> tiles = new Seq<>();
-        Seq<Tile> visited = new Seq<>();
+        IntSet visited = new IntSet();
 
         queue.addLast(tile);
 
@@ -115,7 +113,7 @@ public class Util {
         while (!queue.isEmpty() && tiles.size < maxTiles) {
             Tile currentTile = queue.removeFirst();
 
-            if (!Build.validPlace(Blocks.copperWall.environmentBuildable() ? Blocks.copperWall : Blocks.berylliumWall, Vars.player.team(), currentTile.x, currentTile.y, 0) || visited.contains(currentTile))
+            if (!visited.add(currentTile.pos()) || !Build.validPlace(Blocks.copperWall.environmentBuildable() ? Blocks.copperWall : Blocks.berylliumWall, Vars.player.team(), currentTile.x, currentTile.y, 0))
                 continue;
 
             if (currentTile.drop() == sourceItem) {
@@ -125,7 +123,7 @@ public class Util {
                             Tile neighbor = currentTile.nearby(x, y);
                             if (neighbor == null) continue;
 
-                            if (!visited.contains(neighbor)) {
+                            if (!visited.contains(neighbor.pos())) {
                                 queue.addLast(neighbor);
                             }
                         }
@@ -134,8 +132,6 @@ public class Util {
 
                 tiles.add(currentTile);
             }
-
-            visited.add(currentTile);
         }
 
         tiles.sort(Tile::pos);
