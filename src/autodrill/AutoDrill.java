@@ -119,7 +119,7 @@ public class AutoDrill extends Mod {
 
             settings.pref(new DividerSetting());
             settings.pref(new DescriptionSetting(bundle.get("auto-drill.settings.optimization-quality-desc")));
-            settings.sliderPref(bundle.get("auto-drill.settings.optimization-quality"), 2, 1, 10, 1, i -> i + "");
+            settings.sliderPref(bundle.get("auto-drill.settings.optimization-quality"), 2, 1, 30, 1, i -> i + "");
             settings.checkPref(bundle.get("auto-drill.settings.place-water-extractor-and-power-nodes"), true);
 
             settingsTable.add(settings);

@@ -63,7 +63,8 @@ public class OptimizationDrill {
         Seq<Tile> selection = new Seq<>();
         Seq<OutputPlan> outputPlans = new Seq<>();
 
-        int maxTries = Core.settings.getInt(bundle.get("auto-drill.settings.optimization-quality")) * 1000;
+        int quality = Core.settings.getInt(bundle.get("auto-drill.settings.optimization-quality"));
+        int maxTries = quality * (bridgeOutputs ? 2000 : 1000);
 
         recursiveMaxSearch(tiles, drill, tilesItemAndCount, selection, outputPlans, new Seq<>(), 0, new Seq<>(), maxTries, 0, bridgeOutputs);
 
@@ -268,8 +269,9 @@ public class OptimizationDrill {
 
                     int nextPos = next.pos();
                     if (visited.contains(nextPos) || !canUseBridgeTile(next, drillRects, reserved)) continue;
+                    if (network.crossesExistingSegment(current.tile, next) || current.crossesPreviousSegment(next)) continue;
 
-                    int nextCost = current.cost + bridgeTileCost(next);
+                    int nextCost = current.cost + bridgeTileCost(next) + bridgeSegmentCost(current.tile, next);
                     Integer knownCost = bestCosts.get(nextPos);
                     if (knownCost != null && knownCost <= nextCost) continue;
 
@@ -420,9 +422,42 @@ public class OptimizationDrill {
 
     private static int bridgeTileCost(Tile tile) {
         int cost = 1;
-        if (tile.drop() != null) cost += 2;
+        if (tile.drop() != null) cost += 8;
+        if (hasNearbyOre(tile)) cost += 3;
         if (isExistingOutput(tile)) cost -= 1;
         return cost;
+    }
+
+    private static int bridgeSegmentCost(Tile from, Tile to) {
+        int cost = 0;
+        int dx = Integer.compare(to.x, from.x);
+        int dy = Integer.compare(to.y, from.y);
+        int x = from.x + dx;
+        int y = from.y + dy;
+
+        while (x != to.x || y != to.y) {
+            Tile tile = Vars.world.tile(x, y);
+            if (tile != null) {
+                if (tile.drop() != null) cost += 2;
+                if (hasNearbyOre(tile)) cost++;
+            }
+
+            x += dx;
+            y += dy;
+        }
+
+        return cost;
+    }
+
+    private static boolean hasNearbyOre(Tile tile) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                Tile nearby = tile.nearby(dx, dy);
+                if (nearby != null && nearby.drop() != null) return true;
+            }
+        }
+
+        return false;
     }
 
     private static int estimateBridgeCost(Tile tile, BridgeNetwork network, int range) {
@@ -467,6 +502,7 @@ public class OptimizationDrill {
     private static class BridgeNetwork {
         final Tile root;
         final HashMap<Integer, BridgeNode> nodes = new HashMap<>();
+        final Seq<BridgeSegment> segments = new Seq<>();
         int connectedOutputs;
 
         BridgeNetwork(Tile root) {
@@ -477,8 +513,10 @@ public class OptimizationDrill {
             BridgeNode existing = nodes.get(tile.pos());
             if (existing == null) {
                 nodes.put(tile.pos(), new BridgeNode(tile, next));
+                if (next != null) segments.add(new BridgeSegment(tile, next));
             } else if (existing.next == null && (root == null || tile.pos() != root.pos())) {
                 existing.next = next;
+                segments.add(new BridgeSegment(tile, next));
             }
         }
 
@@ -490,6 +528,60 @@ public class OptimizationDrill {
             if (!path.isEmpty()) {
                 add(path.peek(), null);
             }
+        }
+
+        boolean crossesExistingSegment(Tile from, Tile to) {
+            BridgeSegment candidate = new BridgeSegment(from, to);
+            return segments.contains(segment -> segment.crosses(candidate));
+        }
+    }
+
+    private static class BridgeSegment {
+        final Tile from;
+        final Tile to;
+        final boolean vertical;
+        final int minX;
+        final int maxX;
+        final int minY;
+        final int maxY;
+
+        BridgeSegment(Tile from, Tile to) {
+            this.from = from;
+            this.to = to;
+            this.vertical = from.x == to.x;
+            this.minX = Math.min(from.x, to.x);
+            this.maxX = Math.max(from.x, to.x);
+            this.minY = Math.min(from.y, to.y);
+            this.maxY = Math.max(from.y, to.y);
+        }
+
+        boolean crosses(BridgeSegment other) {
+            if (sharesEndpoint(other)) return false;
+
+            if (vertical == other.vertical) {
+                if (vertical) {
+                    return from.x == other.from.x && rangesOverlapInside(minY, maxY, other.minY, other.maxY);
+                }
+
+                return from.y == other.from.y && rangesOverlapInside(minX, maxX, other.minX, other.maxX);
+            }
+
+            BridgeSegment v = vertical ? this : other;
+            BridgeSegment h = vertical ? other : this;
+
+            return h.minX < v.from.x && v.from.x < h.maxX && v.minY < h.from.y && h.from.y < v.maxY;
+        }
+
+        boolean sharesEndpoint(BridgeSegment other) {
+            return sameTile(from, other.from) || sameTile(from, other.to) || sameTile(to, other.from) || sameTile(to, other.to);
+        }
+
+        boolean sameTile(Tile a, Tile b) {
+            return a.pos() == b.pos();
+        }
+
+        boolean rangesOverlapInside(int aMin, int aMax, int bMin, int bMax) {
+            return Math.max(aMin, bMin) < Math.min(aMax, bMax);
         }
     }
 
@@ -531,6 +623,19 @@ public class OptimizationDrill {
             }
 
             return path;
+        }
+
+        boolean crossesPreviousSegment(Tile next) {
+            BridgeSegment candidate = new BridgeSegment(tile, next);
+            PathNode current = this;
+
+            while (current.previous != null) {
+                BridgeSegment previousSegment = new BridgeSegment(current.previous.tile, current.tile);
+                if (previousSegment.crosses(candidate)) return true;
+                current = current.previous;
+            }
+
+            return false;
         }
     }
 
